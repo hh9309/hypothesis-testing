@@ -47,9 +47,7 @@ export const LLMSettingsModal: React.FC<LLMSettingsModalProps> = ({
       onConfigSaved({ apiKey: apiKey.trim(), model });
     }
 
-    setTimeout(() => {
-      setSavedSuccess(false);
-    }, 2500);
+    onClose();
   };
 
   return (
