@@ -1,0 +1,6 @@
+{
+  "name": "假设检验与推断统计智能实验室",
+  "description": "假设检验与推断统计智能实验室 — 包含概念引导、交互决策树、5步检验沙盒、动态分布与两类错误博弈、经典案例、Python验证代码及AI统计报告导出。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
