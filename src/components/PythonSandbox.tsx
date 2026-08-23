@@ -22,166 +22,1008 @@ export const PythonSandbox: React.FC<PythonSandboxProps> = ({ inputData }) => {
     const testType = inputData.testType;
 
     if (codeType === 'visual_matplotlib') {
+      const isChi2 = testType === 'chi2_independence';
+      const isF = testType === 'f_two_variance' || testType === 'f_anova_one_way';
+      const isZ = testType === 'z_one_sample' || testType === 'z_proportion_one' || testType === 'z_proportion_two';
+      const isT = testType === 't_one_sample' || testType === 't_two_sample_ind' || testType === 't_paired';
+
+      const statVal = Number(result.statisticValue.toFixed(4));
+      const alt = inputData.alternative;
+
+      if (isChi2) {
+        const df = typeof result.df === 'number' ? result.df : 1;
+        return `import scipy.stats as stats
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ==============================================================================
+# 卡方独立性检验分布与拒绝域可视化 (Chi-Square Distribution Plot)
+# 可在本地 Python 3 环境中直接运行 (需安装 scipy, numpy, matplotlib)
+# ==============================================================================
+
+# 设置绘图风格 (自动适配环境)
+plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
+fig, ax = plt.subplots(figsize=(9, 5), dpi=120)
+
+df = ${df}
+alpha = ${alpha}
+stat_val = ${statVal}
+
+# 生成卡方分布 X 轴范围
+max_x = max(20.0, stat_val * 1.3, float(stats.chi2.ppf(0.999, df)))
+x = np.linspace(0.01, max_x, 600)
+y = stats.chi2.pdf(x, df)
+
+# 临界值 (卡方检验通常为右侧单尾拒绝域)
+crit = float(stats.chi2.ppf(1 - alpha, df))
+
+# 绘制卡方分布概率密度曲线
+ax.plot(x, y, label=f'Chi-Square PDF (df={df})', color='#3D523E', lw=2.2)
+
+# 填充拒绝域 (Rejection Region)
+ax.fill_between(x, y, where=(x >= crit), color='#C99B8B', alpha=0.55, label=f'Rejection Region (α={alpha})')
+
+# 标注临界值线与观测统计量线
+ax.axvline(crit, color='#8C4332', linestyle='--', lw=1.8, label=f'Critical Value χ²_crit = {crit:.3f}')
+ax.axvline(stat_val, color='#2D2A26', linestyle='-', lw=2.5, label=f'Observed χ² = {stat_val:.3f}')
+
+# 图形修饰与标签
+ax.set_title("${result.testName} - 抽样分布与拒绝域", fontsize=13, fontweight='bold', pad=14)
+ax.set_xlabel("Chi-Square Statistic Value (χ²)", fontsize=10, labelpad=8)
+ax.set_ylabel("Probability Density f(χ²)", fontsize=10, labelpad=8)
+ax.set_xlim(0, max_x)
+ax.set_ylim(bottom=0)
+ax.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
+plt.tight_layout()
+
+# 保存并展示图形
+plt.savefig("hypothesis_test_chisq_plot.png", dpi=300)
+print("图表已成功保存为 hypothesis_test_chisq_plot.png")
+plt.show()
+`;
+      }
+
+      if (isF) {
+        const df1 = testType === 'f_two_variance' ? (inputData.group1Size ?? 15) - 1 : 2;
+        const df2 = testType === 'f_two_variance' ? (inputData.group2Size ?? 15) - 1 : 12;
+        return `import scipy.stats as stats
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ==============================================================================
+# F 检验分布与拒绝域可视化 (F-Distribution Plot)
+# 可在本地 Python 3 环境中直接运行 (需安装 scipy, numpy, matplotlib)
+# ==============================================================================
+
+plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
+fig, ax = plt.subplots(figsize=(9, 5), dpi=120)
+
+df1 = ${df1}
+df2 = ${df2}
+alpha = ${alpha}
+stat_val = ${statVal}
+alternative = '${alt}'
+
+# 生成 F 分布 X 轴范围
+max_x = max(6.0, stat_val * 1.3, float(stats.f.ppf(0.995, df1, df2)))
+x = np.linspace(0.01, max_x, 600)
+y = stats.f.pdf(x, df1, df2)
+
+# 绘制 F 概率密度曲线
+ax.plot(x, y, label=f'F-Distribution PDF (df1={df1}, df2={df2})', color='#3D523E', lw=2.2)
+
+# 根据备择假设填充拒绝域
+if alternative == 'two_sided':
+    crit_low = float(stats.f.ppf(alpha / 2, df1, df2))
+    crit_high = float(stats.f.ppf(1 - alpha / 2, df1, df2))
+    ax.fill_between(x, y, where=(x <= crit_low), color='#C99B8B', alpha=0.55, label=f'Rejection Lower (α/2={alpha/2:.3f})')
+    ax.fill_between(x, y, where=(x >= crit_high), color='#C99B8B', alpha=0.55, label=f'Rejection Upper (α/2={alpha/2:.3f})')
+    ax.axvline(crit_low, color='#8C4332', linestyle='--', lw=1.5, label=f'Crit Low = {crit_low:.3f}')
+    ax.axvline(crit_high, color='#8C4332', linestyle='--', lw=1.5, label=f'Crit High = {crit_high:.3f}')
+elif alternative == 'greater':
+    crit = float(stats.f.ppf(1 - alpha, df1, df2))
+    ax.fill_between(x, y, where=(x >= crit), color='#C99B8B', alpha=0.55, label=f'Rejection Region (α={alpha})')
+    ax.axvline(crit, color='#8C4332', linestyle='--', lw=1.8, label=f'F_crit = {crit:.3f}')
+else:
+    crit = float(stats.f.ppf(alpha, df1, df2))
+    ax.fill_between(x, y, where=(x <= crit), color='#C99B8B', alpha=0.55, label=f'Rejection Region (α={alpha})')
+    ax.axvline(crit, color='#8C4332', linestyle='--', lw=1.8, label=f'F_crit = {crit:.3f}')
+
+# 标注观测 F 统计量
+ax.axvline(stat_val, color='#2D2A26', linestyle='-', lw=2.5, label=f'Observed F = {stat_val:.3f}')
+
+ax.set_title("${result.testName} - F 抽样分布与拒绝域", fontsize=13, fontweight='bold', pad=14)
+ax.set_xlabel("F Statistic Value", fontsize=10, labelpad=8)
+ax.set_ylabel("Probability Density f(F)", fontsize=10, labelpad=8)
+ax.set_xlim(0, max_x)
+ax.set_ylim(bottom=0)
+ax.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
+plt.tight_layout()
+
+plt.savefig("hypothesis_test_f_plot.png", dpi=300)
+print("图表已成功保存为 hypothesis_test_f_plot.png")
+plt.show()
+`;
+      }
+
+      // t or Z distribution
+      const dfVal = typeof result.df === 'number' && result.df !== Infinity ? result.df : 30;
+      const isZTest = isZ || result.df === Infinity;
+
       return `import scipy.stats as stats
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 绘制假设检验概率分布与拒绝域图形
+# ==============================================================================
+# ${isZTest ? '标准正态 (Z) 分布' : '学生氏 t 分布'}与拒绝域可视化
+# 可在本地 Python 3 环境中直接运行 (需安装 scipy, numpy, matplotlib)
+# ==============================================================================
+
 plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
-fig, ax = plt.subplots(figsize=(8, 4.5), dpi=100)
+fig, ax = plt.subplots(figsize=(9, 5), dpi=120)
 
-${testType === 'chi2_independence' ? `
-# 卡方分布绘制
-df = ${typeof result.df === 'number' ? result.df : 1}
-x = np.linspace(0, 20, 500)
-y = stats.chi2.pdf(x, df)
-crit = stats.chi2.ppf(1 - ${alpha}, df)
-stat_val = ${result.statisticValue.toFixed(4)}
-
-ax.plot(x, y, label=f'Chi-Square PDF (df={df})', color='#3D523E', lw=2)
-ax.fill_between(x, y, where=(x >= crit), color='#C99B8B', alpha=0.5, label=f'Rejection Region (alpha={alpha})')
-ax.axvline(crit, color='#8C4332', linestyle='--', label=f'Critical Value ({crit:.2f})')
-ax.axvline(stat_val, color='#2D2A26', linestyle='-', lw=2.5, label=f'Observed Stat ({stat_val:.2f})')
+alpha = ${alpha}
+stat_val = ${statVal}
+alternative = '${alt}'
+${isZTest ? `
+# 标准正态 Z 采样分布
+dist = stats.norm()
+dist_name = "Standard Normal (Z) PDF"
 ` : `
-# t / Z 标准采样分布
-df = ${typeof result.df === 'number' && result.df !== Infinity ? result.df : 30}
-x = np.linspace(-4, 4, 500)
-y = stats.t.pdf(x, df) if df != 30 else stats.norm.pdf(x)
-crit = stats.t.ppf(1 - ${alpha}/2, df)
-stat_val = ${result.statisticValue.toFixed(4)}
-
-ax.plot(x, y, label='Sampling Distribution', color='#5A6354', lw=2)
-ax.fill_between(x, y, where=(x >= crit), color='#C99B8B', alpha=0.5, label='Rejection Region (+)')
-ax.fill_between(x, y, where=(x <= -crit), color='#C99B8B', alpha=0.5, label='Rejection Region (-)')
-ax.axvline(crit, color='#8C4332', linestyle='--', label=f'Critical Cutoff (+{crit:.2f})')
-ax.axvline(-crit, color='#8C4332', linestyle='--', label=f'Critical Cutoff (-{crit:.2f})')
-ax.axvline(stat_val, color='#2D2A26', linestyle='-', lw=2.5, label=f'Observed t ({stat_val:.2f})')
+# 学生氏 t 采样分布 (df=${dfVal})
+df = ${dfVal}
+dist = stats.t(df=df)
+dist_name = f"Student's t PDF (df={df})"
 `}
 
-ax.set_title("${result.testName} Distribution & Critical Cutoffs", fontsize=12, fontweight='bold', pad=12)
-ax.set_xlabel("Test Statistic Value", fontsize=10)
-ax.set_ylabel("Probability Density", fontsize=10)
-ax.legend(loc='upper right', frameon=True)
+# 动态设定 X 轴绘图区间
+x_min = min(-4.0, stat_val - 1.2)
+x_max = max(4.0, stat_val + 1.2)
+x = np.linspace(x_min, x_max, 600)
+y = dist.pdf(x)
+
+# 绘制概率密度函数
+ax.plot(x, y, label=dist_name, color='#5A6354', lw=2.2)
+
+# 根据备择假设填充拒绝域与临界线
+if alternative == 'two_sided':
+    crit_val = float(dist.ppf(1 - alpha / 2))
+    ax.fill_between(x, y, where=(x >= crit_val), color='#C99B8B', alpha=0.55, label=f'Rejection Region (Upper α/2={alpha/2:.3f})')
+    ax.fill_between(x, y, where=(x <= -crit_val), color='#C99B8B', alpha=0.55, label=f'Rejection Region (Lower α/2={alpha/2:.3f})')
+    ax.axvline(crit_val, color='#8C4332', linestyle='--', lw=1.8, label=f'Critical Cutoff (+{crit_val:.3f})')
+    ax.axvline(-crit_val, color='#8C4332', linestyle='--', lw=1.8, label=f'Critical Cutoff (-{crit_val:.3f})')
+elif alternative == 'greater':
+    crit_val = float(dist.ppf(1 - alpha))
+    ax.fill_between(x, y, where=(x >= crit_val), color='#C99B8B', alpha=0.55, label=f'Rejection Region (α={alpha})')
+    ax.axvline(crit_val, color='#8C4332', linestyle='--', lw=1.8, label=f'Critical Cutoff (+{crit_val:.3f})')
+else:  # 'less'
+    crit_val = float(dist.ppf(alpha))
+    ax.fill_between(x, y, where=(x <= crit_val), color='#C99B8B', alpha=0.55, label=f'Rejection Region (α={alpha})')
+    ax.axvline(crit_val, color='#8C4332', linestyle='--', lw=1.8, label=f'Critical Cutoff ({crit_val:.3f})')
+
+# 标注实际观测统计量
+stat_label = "${result.statisticName}"
+ax.axvline(stat_val, color='#2D2A26', linestyle='-', lw=2.5, label=f'Observed {stat_label} = {stat_val:.3f}')
+
+# 标注图表细节
+ax.set_title("${result.testName} - 抽样分布与拒绝域", fontsize=13, fontweight='bold', pad=14)
+ax.set_xlabel(f"{stat_label} Test Statistic Value", fontsize=10, labelpad=8)
+ax.set_ylabel("Probability Density", fontsize=10, labelpad=8)
+ax.set_xlim(x_min, x_max)
+ax.set_ylim(bottom=0)
+ax.legend(loc='upper right', frameon=True, facecolor='white', framealpha=0.9)
 plt.tight_layout()
-plt.savefig("hypothesis_test_plot.png", dpi=300)
+
+plt.savefig("hypothesis_test_distribution_plot.png", dpi=300)
+print("图表已成功保存为 hypothesis_test_distribution_plot.png")
 plt.show()
 `;
     }
 
     if (codeType === 'statsmodels') {
-      return `import statsmodels.api as sm
+      const smAlt = inputData.alternative === 'two_sided' ? 'two-sided' : (inputData.alternative === 'greater' ? 'larger' : 'smaller');
+
+      switch (testType) {
+        case 't_one_sample':
+          return `import numpy as np
+from statsmodels.stats.weightstats import DescrStatsW
+
+# ==============================================================================
+# 单样本 t 检验 - statsmodels 实现
+# ==============================================================================
+
+sample_mean = ${inputData.sampleMean ?? 102}
+sample_sd = ${inputData.sampleSd ?? 12}
+n = ${inputData.sampleSize ?? 15}
+mu0 = ${inputData.nullValue ?? 100}
+alpha = ${alpha}
+alternative = '${smAlt}'  # statsmodels 备择假设支持: 'two-sided', 'larger', 'smaller'
+
+# 基于样本均值与方差生成代表性样本数据
+np.random.seed(42)
+raw_data = np.random.randn(n)
+data = (raw_data - np.mean(raw_data)) / np.std(raw_data, ddof=1) * sample_sd + sample_mean
+
+# 运行 statsmodels DescrStatsW t 检验
+dstat = DescrStatsW(data)
+t_stat, p_val, df = dstat.ttest_mean(value=mu0, alternative=alternative)
+ci_low, ci_high = dstat.tconfint_mean(alpha=alpha, alternative='two-sided')
+
+print("=" * 50)
+print("statsmodels 单样本 t 检验输出 (DescrStatsW.ttest_mean)")
+print("=" * 50)
+print(f"样本均值 (Mean): {np.mean(data):.4f}")
+print(f"样本标准差 (SD): {np.std(data, ddof=1):.4f}")
+print(f"t 统计量: {t_stat:.4f}, 自由度 df: {df}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"{(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (在 α=' + str(alpha) + ' 水平下显著)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 't_two_sample_ind':
+          return `import numpy as np
+from statsmodels.stats.weightstats import CompareMeans, DescrStatsW
+
+# ==============================================================================
+# 独立双样本 t 检验 - statsmodels 实现
+# ==============================================================================
+
+m1, s1, n1 = ${inputData.group1Mean ?? 105}, ${inputData.group1Sd ?? 10}, ${inputData.group1Size ?? 20}
+m2, s2, n2 = ${inputData.group2Mean ?? 98}, ${inputData.group2Sd ?? 12}, ${inputData.group2Size ?? 20}
+alpha = ${alpha}
+alternative = '${smAlt}'
+
+np.random.seed(42)
+raw1 = np.random.randn(n1)
+g1 = (raw1 - np.mean(raw1)) / np.std(raw1, ddof=1) * s1 + m1
+
+raw2 = np.random.randn(n2)
+g2 = (raw2 - np.mean(raw2)) / np.std(raw2, ddof=1) * s2 + m2
+
+d1 = DescrStatsW(g1)
+d2 = DescrStatsW(g2)
+cm = CompareMeans(d1, d2)
+
+# Welch's t-test (usevar='unequal')
+t_stat, p_val, df = cm.ttest_ind(alternative=alternative, usevar='unequal')
+ci_low, ci_high = cm.tconfint_diff(alpha=alpha, alternative='two-sided', usevar='unequal')
+
+print("=" * 50)
+print("statsmodels 独立双样本 t 检验输出 (CompareMeans.ttest_ind)")
+print("=" * 50)
+print(f"组1均值: {np.mean(g1):.4f}, 组2均值: {np.mean(g2):.4f}, 均值差: {np.mean(g1) - np.mean(g2):.4f}")
+print(f"t 统计量: {t_stat:.4f}, Welch 自由度 df: {df:.2f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"均值差 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (两组均值存在显著差异)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 't_paired':
+          return `import numpy as np
+from statsmodels.stats.weightstats import DescrStatsW
+
+# ==============================================================================
+# 配对样本 t 检验 - statsmodels 实现
+# ==============================================================================
+
+mean_diff = ${inputData.sampleMean ?? 4.5}
+sd_diff = ${inputData.sampleSd ?? 6.2}
+n = ${inputData.sampleSize ?? 20}
+alpha = ${alpha}
+alternative = '${smAlt}'
+
+np.random.seed(42)
+raw = np.random.randn(n)
+diffs = (raw - np.mean(raw)) / np.std(raw, ddof=1) * sd_diff + mean_diff
+
+dstat = DescrStatsW(diffs)
+t_stat, p_val, df = dstat.ttest_mean(value=0, alternative=alternative)
+ci_low, ci_high = dstat.tconfint_mean(alpha=alpha, alternative='two-sided')
+
+print("=" * 50)
+print("statsmodels 配对样本 t 检验输出 (DescrStatsW.ttest_mean on differences)")
+print("=" * 50)
+print(f"配对差值均值 d̄: {np.mean(diffs):.4f}, 差值标准差 sd: {np.std(diffs, ddof=1):.4f}")
+print(f"t 统计量: {t_stat:.4f}, 自由度 df: {df}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"差值 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (前后/配对差值显著)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 'z_one_sample':
+          return `import numpy as np
+from statsmodels.stats.weightstats import DescrStatsW
+
+# ==============================================================================
+# 单样本 Z 检验 - statsmodels 实现
+# ==============================================================================
+
+sample_mean = ${inputData.sampleMean ?? 102}
+sigma = ${inputData.sampleSd ?? 12}
+n = ${inputData.sampleSize ?? 15}
+mu0 = ${inputData.nullValue ?? 100}
+alpha = ${alpha}
+alternative = '${smAlt}'
+
+np.random.seed(42)
+raw = np.random.randn(n)
+data = (raw - np.mean(raw)) / np.std(raw, ddof=1) * sigma + sample_mean
+
+dstat = DescrStatsW(data)
+z_stat, p_val = dstat.ztest_mean(value=mu0, alternative=alternative)
+ci_low, ci_high = dstat.zconfint_mean(alpha=alpha, alternative='two-sided')
+
+print("=" * 50)
+print("statsmodels 单样本 Z 检验输出 (DescrStatsW.ztest_mean)")
+print("=" * 50)
+print(f"样本均值: {np.mean(data):.4f}, 总体标准差 σ: {sigma}")
+print(f"Z 统计量: {z_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"{(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (显著差异)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 'z_proportion_one':
+          return `from statsmodels.stats.proportion import proportions_ztest, proportion_confint
+
+# ==============================================================================
+# 单样本比例 Z 检验 - statsmodels 实现
+# ==============================================================================
+
+count = ${inputData.x1 ?? 60}
+nobs = ${inputData.n1 ?? inputData.sampleSize ?? 100}
+p0 = ${inputData.nullValue ?? 0.5}
+alpha = ${alpha}
+alternative = '${smAlt}'
+
+# 运行比例 Z 检验
+z_stat, p_val = proportions_ztest(count=count, nobs=nobs, value=p0, alternative=alternative)
+ci_low, ci_high = proportion_confint(count=count, nobs=nobs, alpha=alpha, method='wilson')
+
+p_hat = count / nobs
+
+print("=" * 50)
+print("statsmodels 单样本比例 Z 检验输出 (proportions_ztest)")
+print("=" * 50)
+print(f"样本转化数 x: {count}, 样本量 n: {nobs}, 样本比例 p̂: {p_hat:.4f} ({p_hat*100:.2f}%)")
+print(f"原假设比例 p0: {p0:.4f}")
+print(f"Z 统计量: {z_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"{(1 - alpha) * 100}% Wilson 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (比例与目标存在显著差异)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 'z_proportion_two':
+          return `import numpy as np
+from statsmodels.stats.proportion import proportions_ztest, confint_proportions_2indep
+
+# ==============================================================================
+# 双样本比例之差 Z 检验 (A/B Test) - statsmodels 实现
+# ==============================================================================
+
+count = np.array([${inputData.x1 ?? 45}, ${inputData.x2 ?? 25}])
+nobs = np.array([${inputData.n1 ?? 300}, ${inputData.n2 ?? 300}])
+alpha = ${alpha}
+alternative = '${smAlt}'
+
+# 运行双样本比例检验
+z_stat, p_val = proportions_ztest(count=count, nobs=nobs, alternative=alternative)
+ci_low, ci_high = confint_proportions_2indep(count1=count[0], nobs1=nobs[0], count2=count[1], nobs2=nobs[1], compare='diff', alpha=alpha)
+
+p1 = count[0] / nobs[0]
+p2 = count[1] / nobs[1]
+
+print("=" * 50)
+print("statsmodels 双样本比例 Z 检验输出 (proportions_ztest)")
+print("=" * 50)
+print(f"组1 (p̂1): {count[0]}/{nobs[0]} = {p1:.4f} ({p1*100:.2f}%)")
+print(f"组2 (p̂2): {count[1]}/{nobs[1]} = {p2:.4f} ({p2*100:.2f}%)")
+print(f"比例之差 (p̂1 - p̂2): {p1 - p2:.4f}")
+print(f"Z 统计量: {z_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"比例差 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (两组转化率存在显著差异)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 'chi2_independence':
+          return `import numpy as np
+from statsmodels.stats.contingency_tables import Table
+
+# ==============================================================================
+# 卡方独立性检验 - statsmodels 实现
+# ==============================================================================
+
+observed = np.array([
+    [35, 15],
+    [20, 30]
+])
+alpha = ${alpha}
+
+table = Table(observed)
+rslt = table.test_nominal_association()
+
+print("=" * 50)
+print("statsmodels 卡方独立性检验输出 (contingency_tables.Table)")
+print("=" * 50)
+print("观测频数矩阵 (Observed Table):")
+print(observed)
+print("期望频数矩阵 (Fitted Expected):")
+print(np.round(table.fittedvalues, 2))
+print(f"χ² 统计量: {rslt.statistic:.4f}, 自由度 df: {rslt.df}")
+print(f"p 值 (p-value): {rslt.pvalue:.6f}")
+print(f"决策结论: {'拒绝 H0 (分类变量之间关联显著)' if rslt.pvalue <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
+`;
+
+        case 'f_two_variance':
+          return `import scipy.stats as stats
 import numpy as np
 
-# 使用 statsmodels 库运行假设检验与置信区间
-print("=== statsmodels 深度假设检验结果 ===")
-${testType === 't_one_sample' ? `
-data = np.array([102, 104, 98, 101, 103, 99, 100, 102, 105, 97, 101, 100, 103, 98, 102])
-from statsmodels.stats.weightstats import ztest, DescrStatsW
-dstat = DescrStatsW(data)
-t_stat, p_val, df = dstat.ttest_mean(value=${inputData.nullValue ?? 100})
-ci_low, ci_high = dstat.tconfint_mean(alpha=${alpha})
-print(f"t-statistic: {t_stat:.4f}, df: {df}")
-print(f"p-value: {p_val:.6f}")
-print(f"${(1 - alpha)*100}% Confidence Interval: [{ci_low:.4f}, {ci_high:.4f}]")
-` : `
-# 通用模型检验输出
-print("统计检验模型拟合完成")
-print(f"检验方法: ${result.testName}")
-print(f"统计量: ${result.statisticName} = ${result.statisticValue.toFixed(4)}, p-value = ${result.pValue < 0.001 ? '< 0.001' : result.pValue.toFixed(6)}")
-`}
+# ==============================================================================
+# 双样本方差比 F 检验 - statsmodels & scipy 实现
+# ==============================================================================
+
+s1, n1 = ${inputData.group1Sd ?? 10}, ${inputData.group1Size ?? 20}
+s2, n2 = ${inputData.group2Sd ?? 12}, ${inputData.group2Size ?? 20}
+alpha = ${alpha}
+alternative = '${inputData.alternative}'
+
+var1 = s1 ** 2
+var2 = s2 ** 2
+f_stat = var1 / var2
+df1 = n1 - 1
+df2 = n2 - 1
+
+if alternative == 'two_sided':
+    p_val = 2 * min(stats.f.cdf(f_stat, df1, df2), 1 - stats.f.cdf(f_stat, df1, df2))
+elif alternative == 'greater':
+    p_val = 1 - stats.f.cdf(f_stat, df1, df2)
+else:
+    p_val = stats.f.cdf(f_stat, df1, df2)
+
+ci_low = f_stat / stats.f.ppf(1 - alpha / 2, df1, df2)
+ci_high = f_stat / stats.f.ppf(alpha / 2, df1, df2)
+
+print("=" * 50)
+print("双样本方差比 F 检验输出")
+print("=" * 50)
+print(f"组1 方差 s1²: {var1:.4f} (df1={df1}), 组2 方差 s2²: {var2:.4f} (df2={df2})")
+print(f"F 统计量 (s1²/s2²): {f_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"方差比 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"决策结论: {'拒绝 H0 (两组总体方差存在显著差异)' if p_val <= alpha else '无法拒绝 H0'}")
+print("=" * 50)
 `;
+
+        default:
+          return `import pandas as pd
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+
+# ==============================================================================
+# 单因素方差分析 (One-Way ANOVA) - statsmodels OLS 实现
+# ==============================================================================
+
+np.random.seed(42)
+data = {
+    'value': np.concatenate([
+        np.random.normal(105, 10, 20),
+        np.random.normal(98, 12, 20),
+        np.random.normal(112, 11, 20)
+    ]),
+    'group': ['Group_A'] * 20 + ['Group_B'] * 20 + ['Group_C'] * 20
+}
+df = pd.DataFrame(data)
+
+model = ols('value ~ C(group)', data=df).fit()
+anova_table = sm.stats.anova_lm(model, typ=2)
+
+print("=" * 50)
+print("statsmodels 单因素方差分析 ANOVA 表 (anova_lm)")
+print("=" * 50)
+print(anova_table)
+`;
+      }
     }
 
-    // Default scipy.stats code
+    // Default: scipy.stats standard verification
     switch (testType) {
       case 't_one_sample':
         return `import scipy.stats as stats
 import numpy as np
+import math
 
-# 单样本 t 检验 Python scipy.stats 官方标准推算
-data = np.array([102, 104, 98, 101, 103, 99, 100, 102, 105, 97, 101, 100, 103, 98, 102])
-popmean = ${inputData.nullValue ?? 100}
-alpha = ${alpha}
+# ==============================================================================
+# 单样本 t 检验 (One-Sample t-Test) - SciPy 完整可独立运行脚本
+# ==============================================================================
 
-# 1. 运行单样本 t 检验
-res = stats.ttest_1samp(data, popmean, alternative='${inputData.alternative}')
+# 1. 检验输入参数 (可自由修改)
+sample_mean = ${inputData.sampleMean ?? 102}    # 样本均值 x̄
+sample_sd = ${inputData.sampleSd ?? 12}        # 样本标准差 s
+n = ${inputData.sampleSize ?? 15}               # 样本容量 n
+mu0 = ${inputData.nullValue ?? 100}             # 原假设总体均值 μ₀
+alpha = ${alpha}                               # 显著性水平 α
+alternative = '${inputData.alternative}'       # 备择假设: 'two_sided', 'greater', 'less'
 
-# 2. 计算效应量 Cohen's d
-s_sample = np.std(data, ddof=1)
-d = (np.mean(data) - popmean) / s_sample
+# 2. 计算标准误与 t 统计量
+df = n - 1
+se = sample_sd / math.sqrt(n)
+t_stat = (sample_mean - mu0) / se
 
-# 3. 置信区间 CI
-ci = res.confidence_interval(confidence_level=1 - alpha)
+# 3. 计算 p 值与临界值
+if alternative == 'two_sided':
+    p_val = 2 * (1 - stats.t.cdf(abs(t_stat), df=df))
+    t_crit = stats.t.ppf(1 - alpha / 2, df=df)
+    crit_str = f"±{t_crit:.4f}"
+elif alternative == 'greater':
+    p_val = 1 - stats.t.cdf(t_stat, df=df)
+    t_crit = stats.t.ppf(1 - alpha, df=df)
+    crit_str = f"+{t_crit:.4f}"
+else:  # 'less'
+    p_val = stats.t.cdf(t_stat, df=df)
+    t_crit = stats.t.ppf(alpha, df=df)
+    crit_str = f"{t_crit:.4f}"
 
-print("=== 单样本 t 检验结果 (scipy.stats.ttest_1samp) ===")
-print(f"样本均值 x̄: {np.mean(data):.4f}")
-print(f"样本标准差 s: {s_sample:.4f}")
-print(f"t 统计量: {res.statistic:.4f}")
-print(f"自由度 df: {res.df}")
-print(f"p 值: {res.pvalue:.6f}")
-print(f"{(1 - alpha)*100}% 95% 置信区间: [{ci.low:.4f}, {ci.high:.4f}]")
-print(f"Cohen's d: {d:.4f}")
-print(f"决策结论: {'拒绝 H0 (在 alpha=' + str(alpha) + ' 下显著)' if res.pvalue <= alpha else '无法拒绝 H0'}")
+# 4. 计算置信区间与效应量 Cohen's d
+t_ci_crit = stats.t.ppf(1 - alpha / 2, df=df)
+ci_low = sample_mean - t_ci_crit * se
+ci_high = sample_mean + t_ci_crit * se
+cohen_d = (sample_mean - mu0) / sample_sd
+
+# 5. 打印格式化检验报告
+print("=" * 60)
+print("单样本 t 检验 (One-Sample t-Test) 验证报告")
+print("=" * 60)
+print(f"样本均值 x̄: {sample_mean:.4f}, 样本标准差 s: {sample_sd:.4f}, 样本量 n: {n}")
+print(f"原假设 H₀: μ = {mu0}")
+alt_symbol = "≠" if alternative == "two_sided" else (">" if alternative == "greater" else "<")
+print(f"备择假设 H₁: μ {alt_symbol} {mu0}")
+print("-" * 60)
+print(f"t 统计量 (t-statistic): {t_stat:.4f}")
+print(f"自由度 (df): {df}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"显著性水平 α={alpha} 对应临界值: {crit_str}")
+print(f"{(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"效应量 Cohen's d: {cohen_d:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (统计学上显著差异)" if p_val <= alpha else "无法拒绝原假设 H₀ (未发现显著差异)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
 `;
 
       case 't_two_sample_ind':
         return `import scipy.stats as stats
 import numpy as np
+import math
 
-# 独立双样本 t 检验 Python scipy.stats 代码
-group1 = np.array([105, 108, 102, 104, 106, 110, 101, 103, 107, 109])
-group2 = np.array([98, 96, 100, 95, 99, 97, 101, 94, 98, 96])
+# ==============================================================================
+# 独立双样本 t 检验 (Independent Two-Sample t-Test) - SciPy 完整脚本
+# ==============================================================================
+
+# 1. 组别输入参数
+m1, s1, n1 = ${inputData.group1Mean ?? 105}, ${inputData.group1Sd ?? 10}, ${inputData.group1Size ?? 20}
+m2, s2, n2 = ${inputData.group2Mean ?? 98}, ${inputData.group2Sd ?? 12}, ${inputData.group2Size ?? 20}
 alpha = ${alpha}
+alternative = '${inputData.alternative}'
 
-# 1. 前提假定检验
-w_stat, p_norm1 = stats.shapiro(group1)
-_, p_levene = stats.levene(group1, group2)
+# 2. 使用 SciPy 官方标准统计量函数 (stats.ttest_ind_from_stats)
+# 注: 采用 Welch's t-test (equal_var=False) 避免方差不齐偏差
+res = stats.ttest_ind_from_stats(
+    mean1=m1, std1=s1, nobs1=n1,
+    mean2=m2, std2=s2, nobs2=n2,
+    equal_var=False,
+    alternative=alternative
+)
 
-# 2. 独立双样本 t 检验
-res = stats.ttest_ind(group1, group2, equal_var=(p_levene >= 0.05), alternative='${inputData.alternative}')
+# 3. 计算 Welch-Satterthwaite 自由度与置信区间
+se_diff = math.sqrt((s1 ** 2) / n1 + (s2 ** 2) / n2)
+df_welch = ((s1 ** 2 / n1 + s2 ** 2 / n2) ** 2) / (
+    ((s1 ** 2 / n1) ** 2) / (n1 - 1) + ((s2 ** 2 / n2) ** 2) / (n2 - 1)
+)
+t_crit = stats.t.ppf(1 - alpha / 2, df=df_welch)
+mean_diff = m1 - m2
+ci_low = mean_diff - t_crit * se_diff
+ci_high = mean_diff + t_crit * se_diff
 
-# 3. 效应量 Cohen's d
-pooled_sd = np.sqrt(((len(group1)-1)*np.var(group1, ddof=1) + (len(group2)-1)*np.var(group2, ddof=1)) / (len(group1)+len(group2)-2))
-cohen_d = (np.mean(group1) - np.mean(group2)) / pooled_sd
+# 4. 效应量 Cohen's d (合并标准差)
+s_pooled = math.sqrt(((n1 - 1) * s1**2 + (n2 - 1) * s2**2) / (n1 + n2 - 2))
+cohen_d = mean_diff / s_pooled
 
-print("=== 独立双样本 t 检验结果 ===")
-print(f"Levene 方差齐性检验 p 值: {p_levene:.4f}")
+print("=" * 60)
+print("独立双样本 t 检验 (Independent t-Test) 验证报告")
+print("=" * 60)
+print(f"组1: 均值={m1:.4f}, 标准差={s1:.4f}, n={n1}")
+print(f"组2: 均值={m2:.4f}, 标准差={s2:.4f}, n={n2}")
+print(f"均值之差 (x̄₁ - x̄₂): {mean_diff:.4f}, 标准误 SE: {se_diff:.4f}")
+print("-" * 60)
 print(f"t 统计量: {res.statistic:.4f}")
-print(f"自由度 df: {res.df}")
-print(f"p 值: {res.pvalue:.6f}")
-print(f"Cohen's d: {cohen_d:.4f}")
-print(f"决策结论: {'拒绝 H0 (两组均值存在显著差异)' if res.pvalue <= alpha else '无法拒绝 H0'}")
+print(f"Welch 自由度 df: {df_welch:.2f}")
+print(f"p 值 (p-value): {res.pvalue:.6f}")
+print(f"均值差 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"效应量 Cohen's d: {cohen_d:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (两组均值存在显著差异)" if res.pvalue <= alpha else "无法拒绝原假设 H₀ (两组无显著差异)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
+`;
+
+      case 't_paired':
+        return `import scipy.stats as stats
+import numpy as np
+import math
+
+# ==============================================================================
+# 配对样本 t 检验 (Paired Samples t-Test) - SciPy 完整脚本
+# ==============================================================================
+
+# 1. 配对差值参数 (前-后 配对差值)
+mean_diff = ${inputData.sampleMean ?? 4.5}    # 配对差值均值 d̄
+sd_diff = ${inputData.sampleSd ?? 6.2}        # 配对差值标准差 s_d
+n = ${inputData.sampleSize ?? 20}             # 配对样本数 n
+mu_diff_0 = 0.0                               # 原假设配对差值 μ_d = 0
+alpha = ${alpha}
+alternative = '${inputData.alternative}'
+
+# 2. 统计量与自由度计算
+df = n - 1
+se = sd_diff / math.sqrt(n)
+t_stat = (mean_diff - mu_diff_0) / se
+
+# 3. p 值与临界值计算
+if alternative == 'two_sided':
+    p_val = 2 * (1 - stats.t.cdf(abs(t_stat), df=df))
+    t_crit = stats.t.ppf(1 - alpha / 2, df=df)
+    crit_str = f"±{t_crit:.4f}"
+elif alternative == 'greater':
+    p_val = 1 - stats.t.cdf(t_stat, df=df)
+    t_crit = stats.t.ppf(1 - alpha, df=df)
+    crit_str = f"+{t_crit:.4f}"
+else:
+    p_val = stats.t.cdf(t_stat, df=df)
+    t_crit = stats.t.ppf(alpha, df=df)
+    crit_str = f"{t_crit:.4f}"
+
+# 4. 置信区间与效应量 Cohen's dz
+t_ci_crit = stats.t.ppf(1 - alpha / 2, df=df)
+ci_low = mean_diff - t_ci_crit * se
+ci_high = mean_diff + t_ci_crit * se
+cohen_dz = mean_diff / sd_diff
+
+print("=" * 60)
+print("配对样本 t 检验 (Paired t-Test) 验证报告")
+print("=" * 60)
+print(f"配对差值均值 d̄: {mean_diff:.4f}, 差值标准差 s_d: {sd_diff:.4f}, 配对数 n: {n}")
+print(f"原假设 H₀: μ_d = 0, 备择假设 H₁: μ_d {'≠' if alternative == 'two_sided' else ('>' if alternative == 'greater' else '<')} 0")
+print("-" * 60)
+print(f"t 统计量: {t_stat:.4f}, 自由度 df: {df}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"临界值 (α={alpha}): {crit_str}")
+print(f"差值 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"配对效应量 Cohen's dz: {cohen_dz:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (配对前后差异显著)" if p_val <= alpha else "无法拒绝原假设 H₀ (配对差异不显著)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
+`;
+
+      case 'z_one_sample':
+        return `import scipy.stats as stats
+import numpy as np
+import math
+
+# ==============================================================================
+# 单样本 Z 检验 (One-Sample Z-Test) - SciPy 完整脚本
+# ==============================================================================
+
+sample_mean = ${inputData.sampleMean ?? 102}
+sigma = ${inputData.sampleSd ?? 12}            # 总体已知标准差 σ
+n = ${inputData.sampleSize ?? 15}
+mu0 = ${inputData.nullValue ?? 100}
+alpha = ${alpha}
+alternative = '${inputData.alternative}'
+
+se = sigma / math.sqrt(n)
+z_stat = (sample_mean - mu0) / se
+
+if alternative == 'two_sided':
+    p_val = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+    z_crit = stats.norm.ppf(1 - alpha / 2)
+    crit_str = f"±{z_crit:.4f}"
+elif alternative == 'greater':
+    p_val = 1 - stats.norm.cdf(z_stat)
+    z_crit = stats.norm.ppf(1 - alpha)
+    crit_str = f"+{z_crit:.4f}"
+else:
+    p_val = stats.norm.cdf(z_stat)
+    z_crit = stats.norm.ppf(alpha)
+    crit_str = f"{z_crit:.4f}"
+
+z_ci_crit = stats.norm.ppf(1 - alpha / 2)
+ci_low = sample_mean - z_ci_crit * se
+ci_high = sample_mean + z_ci_crit * se
+cohen_d = (sample_mean - mu0) / sigma
+
+print("=" * 60)
+print("单样本 Z 检验 (One-Sample Z-Test) 验证报告")
+print("=" * 60)
+print(f"样本均值 x̄: {sample_mean:.4f}, 总体标准差 σ: {sigma:.4f}, 样本量 n: {n}")
+print(f"原假设 H₀: μ = {mu0}, 备择假设 H₁: μ {'≠' if alternative == 'two_sided' else ('>' if alternative == 'greater' else '<')} {mu0}")
+print("-" * 60)
+print(f"Z 统计量: {z_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"临界值 (α={alpha}): {crit_str}")
+print(f"{(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"效应量 Cohen's d: {cohen_d:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (差异显著)" if p_val <= alpha else "无法拒绝原假设 H₀ (差异不显著)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
+`;
+
+      case 'z_proportion_one':
+        return `import scipy.stats as stats
+import numpy as np
+import math
+
+# ==============================================================================
+# 单样本比例 Z 检验 (One-Proportion Z-Test) - SciPy 完整脚本
+# ==============================================================================
+
+# 1. 输入数据
+x = ${inputData.x1 ?? 60}                       # 观测成功/转化数
+n = ${inputData.n1 ?? inputData.sampleSize ?? 100}  # 总样本量
+p0 = ${inputData.nullValue ?? 0.5}              # 原假设基准比例 p₀
+alpha = ${alpha}
+alternative = '${inputData.alternative}'
+
+# 2. 样本比例与标准误计算
+p_hat = x / n
+se0 = math.sqrt(p0 * (1 - p0) / n)
+z_stat = (p_hat - p0) / se0
+
+# 3. p 值与临界值
+if alternative == 'two_sided':
+    p_val = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+    z_crit = stats.norm.ppf(1 - alpha / 2)
+    crit_str = f"±{z_crit:.4f}"
+elif alternative == 'greater':
+    p_val = 1 - stats.norm.cdf(z_stat)
+    z_crit = stats.norm.ppf(1 - alpha)
+    crit_str = f"+{z_crit:.4f}"
+else:
+    p_val = stats.norm.cdf(z_stat)
+    z_crit = stats.norm.ppf(alpha)
+    crit_str = f"{z_crit:.4f}"
+
+# 4. 置信区间 (Wilson Score 区间 & Wald 区间)
+z_ci_crit = stats.norm.ppf(1 - alpha / 2)
+se_hat = math.sqrt(p_hat * (1 - p_hat) / n)
+ci_low = max(0.0, p_hat - z_ci_crit * se_hat)
+ci_high = min(1.0, p_hat + z_ci_crit * se_hat)
+
+# 5. 效应量 Cohen's h
+cohen_h = 2 * math.asin(math.sqrt(p_hat)) - 2 * math.asin(math.sqrt(p0))
+
+print("=" * 60)
+print("单样本比例 Z 检验 (One-Proportion Z-Test) 验证报告")
+print("=" * 60)
+print(f"观测成功数 x: {x}, 样本量 n: {n}")
+print(f"样本估计比例 p̂: {p_hat:.4f} ({p_hat * 100:.2f}%)")
+print(f"原假设比例 p₀: {p0:.4f} ({p0 * 100:.2f}%)")
+print("-" * 60)
+print(f"Z 统计量: {z_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"临界值 (α={alpha}): {crit_str}")
+print(f"{(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"效应量 Cohen's h: {cohen_h:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (转化率与目标存在显著差异)" if p_val <= alpha else "无法拒绝原假设 H₀ (未发现显著差异)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
+`;
+
+      case 'z_proportion_two':
+        return `import scipy.stats as stats
+import numpy as np
+import math
+
+# ==============================================================================
+# 双样本比例之差 Z 检验 (Two-Proportion Z-Test / A/B Test) - SciPy 完整脚本
+# ==============================================================================
+
+# 1. 组别输入数据
+x1, n1 = ${inputData.x1 ?? 45}, ${inputData.n1 ?? 300}
+x2, n2 = ${inputData.x2 ?? 25}, ${inputData.n2 ?? 300}
+alpha = ${alpha}
+alternative = '${inputData.alternative}'
+
+# 2. 比例计算
+p1 = x1 / n1
+p2 = x2 / n2
+p_pooled = (x1 + x2) / (n1 + n2)
+
+# 3. 合并标准误与 Z 统计量
+se_pooled = math.sqrt(p_pooled * (1 - p_pooled) * (1 / n1 + 1 / n2))
+z_stat = (p1 - p2) / se_pooled
+
+# 4. p 值计算
+if alternative == 'two_sided':
+    p_val = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+    z_crit = stats.norm.ppf(1 - alpha / 2)
+    crit_str = f"±{z_crit:.4f}"
+elif alternative == 'greater':
+    p_val = 1 - stats.norm.cdf(z_stat)
+    z_crit = stats.norm.ppf(1 - alpha)
+    crit_str = f"+{z_crit:.4f}"
+else:
+    p_val = stats.norm.cdf(z_stat)
+    z_crit = stats.norm.ppf(alpha)
+    crit_str = f"{z_crit:.4f}"
+
+# 5. 比例差置信区间与效应量 Cohen's h
+z_ci_crit = stats.norm.ppf(1 - alpha / 2)
+se_diff = math.sqrt(p1 * (1 - p1) / n1 + p2 * (1 - p2) / n2)
+diff = p1 - p2
+ci_low = diff - z_ci_crit * se_diff
+ci_high = diff + z_ci_crit * se_diff
+cohen_h = 2 * math.asin(math.sqrt(p1)) - 2 * math.asin(math.sqrt(p2))
+
+print("=" * 60)
+print("双样本比例之差 Z 检验 (A/B Test) 验证报告")
+print("=" * 60)
+print(f"组1: x₁={x1}, n₁={n1} -> 转化率 p̂₁ = {p1:.4f} ({p1*100:.2f}%)")
+print(f"组2: x₂={x2}, n₂={n2} -> 转化率 p̂₂ = {p2:.4f} ({p2*100:.2f}%)")
+print(f"比例之差 (p̂₁ - p̂₂): {diff:.4f} ({diff*100:.2f}%)")
+print("-" * 60)
+print(f"Z 统计量: {z_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"临界值 (α={alpha}): {crit_str}")
+print(f"比例差 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print(f"效应量 Cohen's h: {cohen_h:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (两组比例存在显著差异)" if p_val <= alpha else "无法拒绝原假设 H₀ (两组比例无显著差异)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
 `;
 
       case 'chi2_independence':
         return `import scipy.stats as stats
 import numpy as np
+import math
 
-# 卡方独立性检验 Python 代码
+# ==============================================================================
+# 卡方独立性检验 (Chi-Square Test of Independence) - SciPy 完整脚本
+# ==============================================================================
+
+# 1. 列联表频数矩阵 (Contingency Table)
 contingency_table = np.array([
     [35, 15],
     [20, 30]
 ])
 alpha = ${alpha}
 
-res = stats.chi2_contingency(contingency_table)
+# 2. 运行 SciPy 卡方独立性检验
+# correction=False 使用标准 Pearson 卡方检验
+chi2_stat, p_val, dof, expected = stats.chi2_contingency(contingency_table, correction=False)
+crit_val = stats.chi2.ppf(1 - alpha, dof)
 
-print("=== 卡方独立性检验结果 ===")
-print(f"χ² 统计量: {res.statistic:.4f}")
-print(f"自由度 df: {res.dof}")
-print(f"p 值: {res.pvalue:.6f}")
-print("期望频数矩阵 (Expected Frequencies):")
-print(res.expected_freq)
-print(f"决策结论: {'拒绝 H0 (分类变量不独立，关联显著)' if res.pvalue <= alpha else '无法拒绝 H0'}")
+# 3. 效应量 Cramer's V 计算
+n_total = np.sum(contingency_table)
+min_dim = min(contingency_table.shape) - 1
+cramers_v = math.sqrt(chi2_stat / (n_total * min_dim)) if min_dim > 0 else 0
+
+print("=" * 60)
+print("卡方独立性检验 (Chi-Square Test) 验证报告")
+print("=" * 60)
+print("观测频数矩阵 (Observed Contingency Table):")
+print(contingency_table)
+print("\\n理论期望频数矩阵 (Expected Frequencies):")
+print(np.round(expected, 2))
+print("-" * 60)
+print(f"χ² 统计量: {chi2_stat:.4f}")
+print(f"自由度 (df): {dof}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"显著性水平 α={alpha} 临界值: {crit_val:.4f}")
+print(f"效应量 Cramer's V: {cramers_v:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (分类变量之间存在显著关联)" if p_val <= alpha else "无法拒绝原假设 H₀ (变量相互独立)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
+`;
+
+      case 'f_two_variance':
+        return `import scipy.stats as stats
+import numpy as np
+
+# ==============================================================================
+# 双样本方差比 F 检验 (Two-Sample F-Test for Variances) - SciPy 完整脚本
+# ==============================================================================
+
+s1, n1 = ${inputData.group1Sd ?? 10}, ${inputData.group1Size ?? 20}
+s2, n2 = ${inputData.group2Sd ?? 12}, ${inputData.group2Size ?? 20}
+alpha = ${alpha}
+alternative = '${inputData.alternative}'
+
+var1 = s1 ** 2
+var2 = s2 ** 2
+f_stat = var1 / var2
+df1 = n1 - 1
+df2 = n2 - 1
+
+# p 值计算
+if alternative == 'two_sided':
+    p_val = 2 * min(stats.f.cdf(f_stat, df1, df2), 1 - stats.f.cdf(f_stat, df1, df2))
+    crit_low = stats.f.ppf(alpha / 2, df1, df2)
+    crit_high = stats.f.ppf(1 - alpha / 2, df1, df2)
+    crit_str = f"[{crit_low:.4f}, {crit_high:.4f}]"
+elif alternative == 'greater':
+    p_val = 1 - stats.f.cdf(f_stat, df1, df2)
+    crit_high = stats.f.ppf(1 - alpha, df1, df2)
+    crit_str = f">{crit_high:.4f}"
+else:
+    p_val = stats.f.cdf(f_stat, df1, df2)
+    crit_low = stats.f.ppf(alpha, df1, df2)
+    crit_str = f"<{crit_low:.4f}"
+
+# 方差比置信区间
+ci_low = f_stat / stats.f.ppf(1 - alpha / 2, df1, df2)
+ci_high = f_stat / stats.f.ppf(alpha / 2, df1, df2)
+
+print("=" * 60)
+print("双样本方差比 F 检验 (F-Test for Variances) 验证报告")
+print("=" * 60)
+print(f"组1: 方差 s1²={var1:.4f}, 自由度 df1={df1}")
+print(f"组2: 方差 s2²={var2:.4f}, 自由度 df2={df2}")
+print(f"原假设 H₀: σ₁² = σ₂², 备择假设 H₁: σ₁² {'≠' if alternative == 'two_sided' else ('>' if alternative == 'greater' else '<')} σ₂²")
+print("-" * 60)
+print(f"F 统计量 (s1²/s2²): {f_stat:.4f}")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"临界值区间 (α={alpha}): {crit_str}")
+print(f"总体方差比 {(1 - alpha) * 100}% 置信区间: [{ci_low:.4f}, {ci_high:.4f}]")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (两组总体方差存在显著差异)" if p_val <= alpha else "无法拒绝原假设 H₀ (方差齐性无显著差异)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
 `;
 
       default:
         return `import scipy.stats as stats
 import numpy as np
 
-# 通用假设检验 Python 验证
-res = stats.ttest_1samp([102, 104, 98, 101, 103, 99, 100], popmean=${inputData.nullValue ?? 100})
-print(f"统计量: {res.statistic:.4f}, p 值: {res.pvalue:.6f}")
+# ==============================================================================
+# 单因素方差分析 (One-Way ANOVA) - SciPy 完整脚本
+# ==============================================================================
+
+np.random.seed(42)
+group_a = np.random.normal(105, 10, 20)
+group_b = np.random.normal(98, 12, 20)
+group_c = np.random.normal(112, 11, 20)
+alpha = ${alpha}
+
+# 运行单因素方差分析
+f_stat, p_val = stats.f_oneway(group_a, group_b, group_c)
+df_between = 3 - 1
+df_within = (len(group_a) + len(group_b) + len(group_c)) - 3
+crit_val = stats.f.ppf(1 - alpha, df_between, df_within)
+
+print("=" * 60)
+print("单因素方差分析 (One-Way ANOVA) 验证报告")
+print("=" * 60)
+print(f"组A 均值: {np.mean(group_a):.4f}, 组B 均值: {np.mean(group_b):.4f}, 组C 均值: {np.mean(group_c):.4f}")
+print("-" * 60)
+print(f"F 统计量: {f_stat:.4f}, 自由度 (df1, df2): ({df_between}, {df_within})")
+print(f"p 值 (p-value): {p_val:.6f}")
+print(f"显著性水平 α={alpha} 临界值: {crit_val:.4f}")
+print("-" * 60)
+decision = "拒绝原假设 H₀ (各组均值之间存在显著差异)" if p_val <= alpha else "无法拒绝原假设 H₀ (未发现显著差异)"
+print(f"统计推断结论: {decision} (α={alpha})")
+print("=" * 60)
 `;
     }
   };
